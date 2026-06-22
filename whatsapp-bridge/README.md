@@ -2,11 +2,11 @@
 
 A small always-on service that holds one persistent WhatsApp Web session per
 user via [Baileys](https://github.com/WhiskeySockets/Baileys) and exposes it
-over a minimal authenticated HTTP API. The base44 backend functions
+over a minimal authenticated HTTP API. The Supabase Edge Functions
 (`whatsapp-connect`, `whatsapp-status`, `whatsapp-disconnect`) call into this
 service; the frontend never talks to it directly.
 
-This exists as a separate service because base44 functions run as
+This exists as a separate service because Supabase Edge Functions run as
 stateless/serverless Deno handlers and can't hold a long-lived WebSocket
 connection, which WhatsApp Web pairing requires.
 
@@ -53,9 +53,9 @@ credentials are written to `./sessions/<userId>/` on disk) — a normal
 serverless platform won't work. Options: a small VPS, Fly.io, Railway, or
 Render (with a persistent volume mounted at the working directory).
 
-Once deployed, set these secrets on the base44 backend so the functions can
+Once deployed, set these secrets on the Supabase project so the functions can
 reach it:
 
 ```sh
-npx base44 secrets set WHATSAPP_BRIDGE_URL=https://your-bridge-host WHATSAPP_BRIDGE_TOKEN=<same value as BRIDGE_TOKEN>
+npx supabase secrets set WHATSAPP_BRIDGE_URL=https://your-bridge-host WHATSAPP_BRIDGE_TOKEN=<same value as BRIDGE_TOKEN>
 ```

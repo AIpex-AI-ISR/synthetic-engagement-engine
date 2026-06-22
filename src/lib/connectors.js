@@ -1,10 +1,8 @@
-// App-user OAuth connector IDs.
-// These come from Base44 Workspace Settings -> Connectors, after registering
-// OAuth credentials for each service there. See README.md for setup steps.
-export const CONNECTOR_IDS = {
-  gmail: import.meta.env.VITE_GMAIL_CONNECTOR_ID || '',
-  google_calendar: import.meta.env.VITE_GOOGLE_CALENDAR_CONNECTOR_ID || '',
-};
+// Direct Google OAuth (Gmail/Calendar) isn't wired up yet -- it needs a
+// Google Cloud OAuth client and a token-exchange function. Until
+// VITE_GOOGLE_CLIENT_ID is set, the Profile page shows these as
+// "not configured" rather than attempting a connection.
+export const GOOGLE_OAUTH_CONFIGURED = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
 export const PROVIDERS = {
   gmail: {

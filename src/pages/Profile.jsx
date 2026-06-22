@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   Unlink,
 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
-import { CONNECTOR_IDS, PROVIDERS } from "@/lib/connectors";
+import { GOOGLE_OAUTH_CONFIGURED, PROVIDERS } from "@/lib/connectors";
 
 const PROVIDER_ICONS = {
   gmail: Mail,
@@ -60,18 +60,34 @@ export default function Profile() {
   }, [user]);
 
   const loadCompanyProfile = async () => {
-    const records = await base44.entities.CompanyProfile.filter({ user_id: user.id });
-    const record = records[0] || null;
-    setCompanyProfile(record);
-    setCompanyName(record?.company_name || "");
-    setCompanySummary(record?.company_summary || "");
+    try {
+      const { data, error } = await supabase
+        .from("company_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      setCompanyProfile(data);
+      setCompanyName(data?.company_name || "");
+      setCompanySummary(data?.company_summary || "");
+    } catch (error) {
+      toast({ title: "Couldn't load company profile", description: error.message, variant: "destructive" });
+    }
   };
 
   const loadConnections = async () => {
     setLoadingConnections(true);
     try {
-      const result = await base44.functions.invoke("connector-status");
-      setConnections(result.data?.connections || {});
+      const { data, error } = await supabase
+        .from("connections")
+        .select("provider, status, external_label")
+        .eq("user_id", user.id);
+      if (error) throw error;
+      const byProvider = {};
+      for (const row of data || []) {
+        byProvider[row.provider] = { status: row.status, external_label: row.external_label };
+      }
+      setConnections(byProvider);
     } catch (error) {
       toast({ title: "Couldn't load connectors", description: error.message, variant: "destructive" });
     } finally {
@@ -91,32 +107,17 @@ export default function Profile() {
     if (!file) return;
     setIsExtracting(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({
-        file_url,
-        json_schema: {
-          type: "object",
-          properties: {
-            company_name: { type: "string", description: "The name of the company" },
-            company_summary: {
-              type: "string",
-              description: "A two-sentence overview of what the company does",
-            },
-          },
-        },
-      });
+      const storagePath = `${user.id}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("company-files")
+        .upload(storagePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
 
-      const data = {
-        user_id: user.id,
-        company_name: extracted.company_name || "",
-        company_summary: extracted.company_summary || "",
-        source_file_url: file_url,
-        source_file_name: file.name,
-      };
-
-      const saved = companyProfile
-        ? await base44.entities.CompanyProfile.update(companyProfile.id, data)
-        : await base44.entities.CompanyProfile.create(data);
+      const { data: saved, error: extractError } = await supabase.functions.invoke(
+        "extract-company-profile",
+        { body: { storage_path: storagePath, file_name: file.name } },
+      );
+      if (extractError) throw extractError;
 
       setCompanyProfile(saved);
       setCompanyName(saved.company_name || "");
@@ -133,10 +134,15 @@ export default function Profile() {
   const handleSaveCompany = async () => {
     setIsSavingCompany(true);
     try {
-      const fields = { company_name: companyName, company_summary: companySummary };
-      const saved = companyProfile
-        ? await base44.entities.CompanyProfile.update(companyProfile.id, fields)
-        : await base44.entities.CompanyProfile.create({ user_id: user.id, ...fields });
+      const { data: saved, error } = await supabase
+        .from("company_profiles")
+        .upsert(
+          { user_id: user.id, company_name: companyName, company_summary: companySummary },
+          { onConflict: "user_id" },
+        )
+        .select()
+        .single();
+      if (error) throw error;
       setCompanyProfile(saved);
       toast({ title: "Saved" });
     } catch (error) {
@@ -146,31 +152,30 @@ export default function Profile() {
     }
   };
 
-  const handleConnect = async (provider) => {
-    const connectorId = CONNECTOR_IDS[provider];
-    if (!connectorId) {
+  const handleConnect = (provider) => {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
       toast({
         title: "Not configured yet",
-        description: `${PROVIDERS[provider].label} needs to be registered in Workspace Settings first.`,
+        description: `${PROVIDERS[provider].label} needs a Google OAuth client configured first.`,
         variant: "destructive",
       });
       return;
     }
-    setConnectingProvider(provider);
-    try {
-      const redirectUrl = await base44.connectors.connectAppUser(connectorId);
-      window.location.href = redirectUrl;
-    } catch (error) {
-      toast({ title: "Couldn't start connection", description: error.message, variant: "destructive" });
-      setConnectingProvider(null);
-    }
+    toast({
+      title: "Coming soon",
+      description: `${PROVIDERS[provider].label} sign-in isn't wired up yet.`,
+    });
   };
 
   const handleDisconnect = async (provider) => {
-    const connectorId = CONNECTOR_IDS[provider];
     setConnectingProvider(provider);
     try {
-      await base44.connectors.disconnectAppUser(connectorId);
+      const { error } = await supabase
+        .from("connections")
+        .update({ status: "disconnected", external_label: null })
+        .eq("user_id", user.id)
+        .eq("provider", provider);
+      if (error) throw error;
       await loadConnections();
       toast({ title: `${PROVIDERS[provider].label} disconnected` });
     } catch (error) {
@@ -198,13 +203,15 @@ export default function Profile() {
     setWhatsappQr(null);
     setWhatsappStatus("pending");
     try {
-      const result = await base44.functions.invoke("whatsapp-connect");
-      applyWhatsappResult(result.data);
-      if (result.data.status !== "connected") {
+      const { data, error } = await supabase.functions.invoke("whatsapp-connect");
+      if (error) throw error;
+      applyWhatsappResult(data);
+      if (data.status !== "connected") {
         pollRef.current = setInterval(async () => {
           try {
-            const statusResult = await base44.functions.invoke("whatsapp-status");
-            applyWhatsappResult(statusResult.data);
+            const { data: statusData, error: statusError } = await supabase.functions.invoke("whatsapp-status");
+            if (statusError) throw statusError;
+            applyWhatsappResult(statusData);
           } catch {
             // Transient network hiccup; the next poll tick will retry.
           }
@@ -224,7 +231,8 @@ export default function Profile() {
   const handleWhatsappDisconnect = async () => {
     setConnectingProvider("whatsapp");
     try {
-      await base44.functions.invoke("whatsapp-disconnect");
+      const { error } = await supabase.functions.invoke("whatsapp-disconnect");
+      if (error) throw error;
       setConnections((prev) => ({ ...prev, whatsapp: { status: "disconnected", external_label: null } }));
       toast({ title: "WhatsApp disconnected" });
     } catch (error) {

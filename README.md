@@ -1,59 +1,46 @@
-**Welcome to your Base44 project** 
+# Synthetic Engagement Engine
 
-**About**
+**Stack:** [Vercel](https://vercel.com) (static frontend hosting) + [Supabase](https://supabase.com) (Postgres, Auth, Storage, Edge Functions) + [Google Gemini](https://aistudio.google.com) (company-file extraction).
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+## Local setup
 
-This project contains everything you need to run your app locally.
-
-**Edit the code in your local development environment**
-
-Any change pushed to the repo will also be reflected in the Base44 Builder.
-
-**Prerequisites:** 
-
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
-
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
-```
-
-Run the app: `npm run dev`
-
-**Publish your changes**
-
-Open [Base44.com](http://Base44.com) and click on Publish.
-
-**Profile page connectors**
-
-The Profile page lets a user connect Gmail, Google Calendar, and WhatsApp. Gmail/Calendar use real per-user OAuth; WhatsApp uses an unofficial QR-pairing bridge. Both need manual setup beyond what's in this repo:
-
-1. **Gmail / Google Calendar** — In the Base44 dashboard, go to Workspace Settings → Connectors and register an app-user connector for each service with a Google Cloud OAuth Client ID/Secret. Each registration gives you a connector ID. Set them as backend secrets and frontend env vars:
+1. Clone the repository and navigate to the project directory.
+2. Install dependencies: `npm install`
+3. Create an `.env.local` file:
    ```
-   npx base44 secrets set GMAIL_CONNECTOR_ID=... GOOGLE_CALENDAR_CONNECTOR_ID=...
+   VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
+4. Run the app: `npm run dev`
+
+## Supabase setup
+
+1. Create a project at [supabase.com](https://supabase.com) and grab its URL + publishable key (Project Settings → API) for `.env.local` above.
+2. Run `supabase/schema.sql` in the SQL Editor to create the tables, RLS policies, and the `company-files` storage bucket.
+3. Deploy the Edge Functions (`supabase/functions/*`) with the [Supabase CLI](https://supabase.com/docs/guides/cli):
+   ```sh
+   npx supabase link --project-ref your-project-ref
+   npx supabase functions deploy
    ```
-   # .env.local
-   VITE_GMAIL_CONNECTOR_ID=...
-   VITE_GOOGLE_CALENDAR_CONNECTOR_ID=...
+4. Set the secrets the functions need:
+   ```sh
+   npx supabase secrets set GEMINI_API_KEY=...
    ```
+   Get a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+5. In Authentication → Email Templates, customize "Confirm signup" to send `{{ .Token }}` (a 6-digit code) instead of the default magic link — Register.jsx expects an OTP code, not a link.
+
+## Deploying
+
+Push to your Git provider and import the repo into [Vercel](https://vercel.com) as a static Vite app. Set the same `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` as project environment variables there.
+
+## Profile page connectors
+
+The Profile page lets a user connect Gmail, Google Calendar, and WhatsApp.
+
+1. **Gmail / Google Calendar** — not wired up yet. This needs a Google Cloud OAuth Client and a token-exchange Edge Function. Until `VITE_GOOGLE_CLIENT_ID` is set, the Profile page shows these as "not configured" (see `src/lib/connectors.js`).
 
 2. **WhatsApp** — there's no official OAuth for linking a personal WhatsApp account, so this uses the unofficial WhatsApp Web protocol via [Baileys](https://github.com/WhiskeySockets/Baileys), run from a separate always-on bridge service in `/whatsapp-bridge` (see its README). Deploy that service somewhere with a persistent filesystem, then:
+   ```sh
+   npx supabase secrets set WHATSAPP_BRIDGE_URL=https://your-bridge-host WHATSAPP_BRIDGE_TOKEN=...
    ```
-   npx base44 secrets set WHATSAPP_BRIDGE_URL=https://your-bridge-host WHATSAPP_BRIDGE_TOKEN=...
-   ```
-   **This is outside WhatsApp's Terms of Service** and risks the linked number being limited or banned — use a number you're comfortable putting at risk. For a compliant production integration, swap this bridge for the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) instead; the rest of the flow (entity, functions, UI) stays the same.
-
-**Docs & Support**
-
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+   **This is outside WhatsApp's Terms of Service** and risks the linked number being limited or banned — use a number you're comfortable putting at risk. For a compliant production integration, swap this bridge for the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) instead; the rest of the flow (table, functions, UI) stays the same.
