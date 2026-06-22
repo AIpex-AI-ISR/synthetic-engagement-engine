@@ -1,0 +1,32 @@
+{
+  "name": "Campaign",
+  "type": "object",
+  "properties": {
+    "persona_id": {
+      "type": "string",
+      "description": "Foreign key to Persona"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "active_days": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Days of the week the campaign is active"
+    },
+    "target_meeting_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "calendar_sync_status": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "persona_id",
+    "goal"
+  ]
+}

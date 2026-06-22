@@ -1,0 +1,40 @@
+{
+  "name": "Persona",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Foreign key to User"
+    },
+    "name": {
+      "type": "string"
+    },
+    "job_title": {
+      "type": "string"
+    },
+    "company": {
+      "type": "string"
+    },
+    "background_summary": {
+      "type": "string",
+      "description": "30k-foot background overview"
+    },
+    "background_detailed": {
+      "type": "string",
+      "description": "Detailed background text"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Draft",
+        "Active"
+      ],
+      "default": "Draft"
+    }
+  },
+  "required": [
+    "user_id",
+    "name",
+    "status"
+  ]
+}
