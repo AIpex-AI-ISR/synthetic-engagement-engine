@@ -38,8 +38,8 @@ create table public.company_profiles (
   user_id uuid not null unique references public.profiles (id) on delete cascade,
   company_name text,
   company_summary text,
-  source_file_url text,
-  source_file_name text,
+  user_summary text,
+  source_files jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -9,6 +9,7 @@ import {
   MessageCircle,
   CheckCircle2,
   Unlink,
+  X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
@@ -32,6 +33,8 @@ const PROVIDER_ICONS = {
   whatsapp: MessageCircle,
 };
 
+const MAX_COMPANY_FILES = 5;
+
 export default function Profile() {
   const { user } = useAuth();
   const fileInputRef = useRef(null);
@@ -40,6 +43,8 @@ export default function Profile() {
   const [companyProfile, setCompanyProfile] = useState(null);
   const [companyName, setCompanyName] = useState("");
   const [companySummary, setCompanySummary] = useState("");
+  const [userSummary, setUserSummary] = useState("");
+  const [sourceFiles, setSourceFiles] = useState([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
 
@@ -70,6 +75,8 @@ export default function Profile() {
       setCompanyProfile(data);
       setCompanyName(data?.company_name || "");
       setCompanySummary(data?.company_summary || "");
+      setUserSummary(data?.user_summary || "");
+      setSourceFiles(data?.source_files || []);
     } catch (error) {
       toast({ title: "Couldn't load company profile", description: error.message, variant: "destructive" });
     }
@@ -103,31 +110,87 @@ export default function Profile() {
   };
 
   const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const selected = Array.from(event.target.files || []);
+    if (selected.length === 0) return;
+
+    const remainingSlots = MAX_COMPANY_FILES - sourceFiles.length;
+    const filesToUpload = selected.slice(0, Math.max(remainingSlots, 0));
+    const rejectedCount = selected.length - filesToUpload.length;
+
+    if (rejectedCount > 0) {
+      toast({
+        title: "Too many files",
+        description: `You can have at most ${MAX_COMPANY_FILES} company files. ${rejectedCount} file${rejectedCount === 1 ? "" : "s"} ${rejectedCount === 1 ? "was" : "were"} not uploaded.`,
+        variant: "destructive",
+      });
+    }
+
+    if (filesToUpload.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
     setIsExtracting(true);
     try {
-      const storagePath = `${user.id}/${Date.now()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("company-files")
-        .upload(storagePath, file, { upsert: true });
-      if (uploadError) throw uploadError;
+      const uploaded = await Promise.all(
+        filesToUpload.map(async (file) => {
+          const storagePath = `${user.id}/${Date.now()}-${file.name}`;
+          const { error: uploadError } = await supabase.storage
+            .from("company-files")
+            .upload(storagePath, file, { upsert: true });
+          if (uploadError) throw uploadError;
+          return { storage_path: storagePath, file_name: file.name };
+        }),
+      );
+
+      const allFiles = [
+        ...sourceFiles.map((f) => ({ storage_path: f.path, file_name: f.name })),
+        ...uploaded,
+      ];
 
       const { data: saved, error: extractError } = await supabase.functions.invoke(
         "extract-company-profile",
-        { body: { storage_path: storagePath, file_name: file.name } },
+        { body: { files: allFiles } },
       );
       if (extractError) throw extractError;
 
       setCompanyProfile(saved);
       setCompanyName(saved.company_name || "");
       setCompanySummary(saved.company_summary || "");
-      toast({ title: "Company profile updated", description: `Extracted from ${file.name}.` });
+      setUserSummary(saved.user_summary || "");
+      setSourceFiles(saved.source_files || []);
+      toast({
+        title: "Company profile updated",
+        description: `Extracted from ${uploaded.map((f) => f.file_name).join(", ")}.`,
+      });
     } catch (error) {
       toast({ title: "Couldn't read that file", description: error.message, variant: "destructive" });
     } finally {
       setIsExtracting(false);
       event.target.value = "";
+    }
+  };
+
+  const handleRemoveSourceFile = async (path) => {
+    const remaining = sourceFiles.filter((f) => f.path !== path);
+    setIsSavingCompany(true);
+    try {
+      const { data: saved, error } = await supabase
+        .from("company_profiles")
+        .upsert(
+          { user_id: user.id, source_files: remaining },
+          { onConflict: "user_id" },
+        )
+        .select()
+        .single();
+      if (error) throw error;
+      setCompanyProfile(saved);
+      setSourceFiles(saved.source_files || []);
+      toast({ title: "File removed" });
+    } catch (error) {
+      toast({ title: "Couldn't remove file", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSavingCompany(false);
     }
   };
 
@@ -137,7 +200,12 @@ export default function Profile() {
       const { data: saved, error } = await supabase
         .from("company_profiles")
         .upsert(
-          { user_id: user.id, company_name: companyName, company_summary: companySummary },
+          {
+            user_id: user.id,
+            company_name: companyName,
+            company_summary: companySummary,
+            user_summary: userSummary,
+          },
           { onConflict: "user_id" },
         )
         .select()
@@ -258,30 +326,59 @@ export default function Profile() {
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-base font-semibold font-heading text-foreground">Company</h2>
+              <h2 className="text-base font-semibold font-heading text-foreground">
+                {companyProfile?.company_name || "Company"}
+              </h2>
               <p className="text-sm text-muted-foreground">
-                Upload a file about your company to auto-fill these fields.
+                Upload up to {MAX_COMPANY_FILES} files about your company to auto-fill these fields.
               </p>
             </div>
           </div>
 
-          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
           <Button
             variant="outline"
             className="rounded-xl gap-2 shrink-0"
-            disabled={isExtracting}
+            disabled={isExtracting || sourceFiles.length >= MAX_COMPANY_FILES}
             onClick={() => fileInputRef.current?.click()}
           >
             {isExtracting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            {isExtracting ? "Reading file..." : "Upload company file"}
+            {isExtracting ? "Reading files..." : "Upload company file"}
           </Button>
         </div>
 
-        {companyProfile?.source_file_name && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5 mb-4">
-            <FileText className="w-3.5 h-3.5" />
-            Extracted from {companyProfile.source_file_name}
-          </p>
+        {sourceFiles.length > 0 && (
+          <div className="mb-4 space-y-2">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              Extracted from {sourceFiles.map((f) => f.name).filter(Boolean).join(", ")}
+            </p>
+            <ul className="space-y-1.5">
+              {sourceFiles.map((f) => (
+                <li
+                  key={f.path}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-1.5"
+                >
+                  <span className="text-sm text-foreground truncate">{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSourceFile(f.path)}
+                    disabled={isSavingCompany}
+                    className="text-muted-foreground hover:text-foreground shrink-0"
+                    aria-label={`Remove ${f.name}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="space-y-3">
@@ -299,6 +396,15 @@ export default function Profile() {
               value={companySummary}
               onChange={(e) => setCompanySummary(e.target.value)}
               placeholder="A two-sentence overview of what the company does."
+              rows={3}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">About you</label>
+            <Textarea
+              value={userSummary}
+              onChange={(e) => setUserSummary(e.target.value)}
+              placeholder="A two-sentence summary about you: your role, background, and what you personally do."
               rows={3}
             />
           </div>

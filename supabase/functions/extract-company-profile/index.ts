@@ -16,8 +16,13 @@ const RESPONSE_SCHEMA = {
       type: "string",
       description: "A two-sentence overview of what the company does",
     },
+    user_summary: {
+      type: "string",
+      description:
+        "A two-sentence summary about the person/founder who owns this profile: their role, background, and what they personally do",
+    },
   },
-  required: ["company_name", "company_summary"],
+  required: ["company_name", "company_summary", "user_summary"],
 };
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -43,18 +48,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
     }
 
-    const { storage_path, file_name } = await req.json();
-    if (!storage_path) {
-      return Response.json({ error: "storage_path is required" }, { status: 400, headers: corsHeaders });
+    const { files } = await req.json();
+    if (!Array.isArray(files) || files.length === 0) {
+      return Response.json({ error: "files is required" }, { status: 400, headers: corsHeaders });
     }
 
-    const { data: fileBlob, error: downloadError } = await supabase.storage
-      .from("company-files")
-      .download(storage_path);
-    if (downloadError) throw downloadError;
-
-    const base64Data = arrayBufferToBase64(await fileBlob.arrayBuffer());
-    const mimeType = fileBlob.type || "application/octet-stream";
+    const downloaded = await Promise.all(
+      files.map(async ({ storage_path, file_name }) => {
+        if (!storage_path) throw new Error("Every file requires a storage_path");
+        const { data: fileBlob, error: downloadError } = await supabase.storage
+          .from("company-files")
+          .download(storage_path);
+        if (downloadError) throw downloadError;
+        const base64Data = arrayBufferToBase64(await fileBlob.arrayBuffer());
+        const mimeType = fileBlob.type || "application/octet-stream";
+        return { storage_path, file_name, base64Data, mimeType };
+      }),
+    );
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
@@ -64,8 +74,14 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: "Extract the company name and a two-sentence summary of what the company does from this document." },
-              { inline_data: { mime_type: mimeType, data: base64Data } },
+              {
+                text:
+                  "Extract the company name, a two-sentence summary of what the company does, and a " +
+                  "separate two-sentence summary about the person/founder, based on these documents.",
+              },
+              ...downloaded.map(({ mimeType, base64Data }) => ({
+                inline_data: { mime_type: mimeType, data: base64Data },
+              })),
             ],
           }],
           generationConfig: {
@@ -88,6 +104,11 @@ Deno.serve(async (req) => {
     }
     const extracted = JSON.parse(text);
 
+    const sourceFiles = downloaded.map(({ storage_path, file_name }) => ({
+      path: storage_path,
+      name: file_name || null,
+    }));
+
     const { data: saved, error: saveError } = await supabase
       .from("company_profiles")
       .upsert(
@@ -95,8 +116,8 @@ Deno.serve(async (req) => {
           user_id: user.id,
           company_name: extracted.company_name || "",
           company_summary: extracted.company_summary || "",
-          source_file_url: storage_path,
-          source_file_name: file_name || null,
+          user_summary: extracted.user_summary || "",
+          source_files: sourceFiles,
         },
         { onConflict: "user_id" },
       )
