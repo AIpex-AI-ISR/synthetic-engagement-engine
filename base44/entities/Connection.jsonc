@@ -1,0 +1,40 @@
+{
+  "name": "Connection",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Foreign key to User"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "gmail",
+        "google_calendar",
+        "whatsapp"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "disconnected",
+        "pending",
+        "connected"
+      ],
+      "default": "disconnected"
+    },
+    "external_label": {
+      "type": "string",
+      "description": "Human-readable identifier for the connected account, e.g. the Gmail address or WhatsApp phone number"
+    },
+    "connected_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "user_id",
+    "provider",
+    "status"
+  ]
+}

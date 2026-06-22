@@ -1,9 +1,10 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, UserCircle, Rocket, CreditCard } from "lucide-react";
+import { LayoutDashboard, User, UserCircle, Rocket, CreditCard } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
+  { label: "Profile", path: "/profile", icon: User },
   { label: "Persona Builder", path: "/personas", icon: UserCircle },
   { label: "Active Campaigns", path: "/campaigns", icon: Rocket },
   { label: "Billing", path: "/billing", icon: CreditCard },

@@ -15,6 +15,7 @@ import ResetPassword from '@/pages/ResetPassword';
 
 import AppShell from '@/components/layout/AppShell';
 import Dashboard from '@/pages/Dashboard';
+import Profile from '@/pages/Profile';
 import PersonaBuilder from '@/pages/PersonaBuilder';
 import ActiveCampaigns from '@/pages/ActiveCampaigns';
 import Billing from '@/pages/Billing';
@@ -49,6 +50,7 @@ const AuthenticatedApp = () => {
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/personas" element={<PersonaBuilder />} />
           <Route path="/campaigns" element={<ActiveCampaigns />} />
           <Route path="/billing" element={<Billing />} />

@@ -1,0 +1,27 @@
+{
+  "name": "CompanyProfile",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Foreign key to User"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "company_summary": {
+      "type": "string",
+      "description": "Two-sentence overview of the company, auto-extracted from the uploaded company file"
+    },
+    "source_file_url": {
+      "type": "string",
+      "description": "URL of the uploaded company file the summary was extracted from"
+    },
+    "source_file_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id"
+  ]
+}
