@@ -6,6 +6,7 @@ import {
   Loader2,
   Mail,
   Calendar,
+  Inbox,
   MessageCircle,
   CheckCircle2,
   Unlink,
@@ -24,11 +25,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
-import { GOOGLE_OAUTH_CONFIGURED, PROVIDERS } from "@/lib/connectors";
+import { GOOGLE_OAUTH_CONFIGURED, MICROSOFT_OAUTH_CONFIGURED, PROVIDERS, buildAuthorizeUrl } from "@/lib/connectors";
 
 const PROVIDER_ICONS = {
   gmail: Mail,
   google_calendar: Calendar,
+  outlook: Inbox,
   whatsapp: MessageCircle,
 };
 
@@ -153,28 +155,24 @@ export default function Profile() {
   };
 
   const handleConnect = (provider) => {
-    if (!GOOGLE_OAUTH_CONFIGURED) {
+    const isConfigured =
+      provider === "outlook" ? MICROSOFT_OAUTH_CONFIGURED : GOOGLE_OAUTH_CONFIGURED;
+    if (!isConfigured) {
+      const oauthProviderName = provider === "outlook" ? "Microsoft" : "Google";
       toast({
         title: "Not configured yet",
-        description: `${PROVIDERS[provider].label} needs a Google OAuth client configured first.`,
+        description: `${PROVIDERS[provider].label} needs a ${oauthProviderName} OAuth client configured first.`,
         variant: "destructive",
       });
       return;
     }
-    toast({
-      title: "Coming soon",
-      description: `${PROVIDERS[provider].label} sign-in isn't wired up yet.`,
-    });
+    window.location.href = buildAuthorizeUrl(provider);
   };
 
   const handleDisconnect = async (provider) => {
     setConnectingProvider(provider);
     try {
-      const { error } = await supabase
-        .from("connections")
-        .update({ status: "disconnected", external_label: null })
-        .eq("user_id", user.id)
-        .eq("provider", provider);
+      const { error } = await supabase.functions.invoke("disconnect-oauth", { body: { provider } });
       if (error) throw error;
       await loadConnections();
       toast({ title: `${PROVIDERS[provider].label} disconnected` });

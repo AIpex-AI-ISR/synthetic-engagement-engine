@@ -18,6 +18,7 @@ import Profile from '@/pages/Profile';
 import PersonaBuilder from '@/pages/PersonaBuilder';
 import ActiveCampaigns from '@/pages/ActiveCampaigns';
 import Billing from '@/pages/Billing';
+import OAuthCallback from '@/pages/OAuthCallback';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth } = useAuth();
@@ -41,6 +42,7 @@ const AuthenticatedApp = () => {
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/personas" element={<PersonaBuilder />} />
           <Route path="/campaigns" element={<ActiveCampaigns />} />
           <Route path="/billing" element={<Billing />} />

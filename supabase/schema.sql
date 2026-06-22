@@ -50,7 +50,7 @@ create table public.company_profiles (
 create table public.connections (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
-  provider text not null check (provider in ('gmail', 'google_calendar', 'whatsapp')),
+  provider text not null check (provider in ('gmail', 'google_calendar', 'outlook', 'whatsapp')),
   status text not null default 'disconnected' check (status in ('disconnected', 'pending', 'connected')),
   external_label text,
   connected_at timestamptz,
@@ -201,3 +201,27 @@ create policy "company_files_owner_rw" on storage.objects
     bucket_id = 'company-files'
     and auth.uid()::text = (storage.foldername(name))[1]
   );
+
+-- ---------------------------------------------------------------------------
+-- oauth_tokens
+-- Raw OAuth tokens for the Gmail / Google Calendar / Outlook connectors.
+-- Kept separate from `connections` (which the frontend reads directly with
+-- the anon/publishable key) so access tokens and refresh tokens are never
+-- selectable from the browser, even under RLS misconfiguration.
+-- ---------------------------------------------------------------------------
+create table public.oauth_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'google_calendar', 'outlook')),
+  access_token text not null,
+  refresh_token text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, provider)
+);
+
+alter table public.oauth_tokens enable row level security;
+-- Deliberately no policy for the authenticated/anon role: only the
+-- service-role key (used server-side in Edge Functions) can read or
+-- write this table, so raw OAuth tokens are never exposed to the browser.

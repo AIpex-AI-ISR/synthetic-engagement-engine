@@ -54,10 +54,26 @@ export async function startSession(userId) {
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
-      sessions.delete(userId);
+
       if (loggedOut) {
+        sessions.delete(userId);
         fs.rmSync(dir, { recursive: true, force: true });
+        return;
       }
+
+      // Baileys closes the socket for plenty of non-fatal reasons -- most
+      // notably `restartRequired` right after the very first QR scan, before
+      // the session ever reaches "connected". Saved creds on disk are still
+      // valid here, so reconnect instead of deleting the session, otherwise
+      // pairing looks like it silently failed and there's no auto-reconnect
+      // after a transient network blip.
+      // Delete the map entry first so startSession's own dedupe guard (which
+      // skips re-creating a socket while status !== "disconnected") doesn't
+      // treat this as a no-op.
+      sessions.delete(userId);
+      startSession(userId).catch(() => {
+        sessions.delete(userId);
+      });
     }
   });
 

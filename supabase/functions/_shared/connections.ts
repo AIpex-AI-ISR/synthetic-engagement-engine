@@ -5,8 +5,10 @@ export async function upsertConnection(
   status: string,
   externalLabel: string | null,
 ) {
-  const data: Record<string, unknown> = { user_id: userId, provider, status };
-  if (externalLabel) data.external_label = externalLabel;
+  // externalLabel is always written, including `null`, so disconnecting
+  // actually clears a previously-stored label instead of leaving it stale
+  // (e.g. WhatsApp's phone number staying on screen after disconnect).
+  const data: Record<string, unknown> = { user_id: userId, provider, status, external_label: externalLabel };
   if (status === "connected") data.connected_at = new Date().toISOString();
 
   const { error } = await supabase
