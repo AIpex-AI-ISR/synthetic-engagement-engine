@@ -29,6 +29,45 @@
    Get a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 5. In Authentication → Email Templates, customize "Confirm signup" to send `{{ .Token }}` (a 6-digit code) instead of the default magic link — Register.jsx expects an OTP code, not a link.
 
+### Updating an existing project
+
+If you already ran `schema.sql` against a live project before the Outlook connector and multi-file company upload were added, re-running the whole file will fail on the tables that already exist. Run just this incremental migration instead (SQL Editor):
+
+```sql
+-- Multi-file company upload + AI user summary (replaces the old single-file columns)
+alter table public.company_profiles
+  drop column if exists source_file_url,
+  drop column if exists source_file_name,
+  add column if not exists user_summary text,
+  add column if not exists source_files jsonb not null default '[]'::jsonb;
+
+-- Allow 'outlook' alongside the existing connection providers
+alter table public.connections
+  drop constraint connections_provider_check,
+  add constraint connections_provider_check
+    check (provider in ('gmail', 'google_calendar', 'outlook', 'whatsapp'));
+
+-- Lockbox table for raw Gmail/Google Calendar/Outlook OAuth tokens
+create table public.oauth_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'google_calendar', 'outlook')),
+  access_token text not null,
+  refresh_token text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, provider)
+);
+
+alter table public.oauth_tokens enable row level security;
+-- Deliberately no policy for the authenticated/anon role: only the
+-- service-role key (used server-side in Edge Functions) can read or
+-- write this table, so raw OAuth tokens are never exposed to the browser.
+```
+
+Then redeploy the Edge Functions (`npx supabase functions deploy`) and set the Microsoft secrets described below if you want Outlook enabled too.
+
 ## Deploying
 
 Push to your Git provider and import the repo into [Vercel](https://vercel.com) as a static Vite app. Set the same `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` as project environment variables there.
